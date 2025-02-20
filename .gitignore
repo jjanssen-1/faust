@@ -1,0 +1,8 @@
+.cache/
+.idea/
+build/
+# Ignore all subdirectories (and their contents) under 'subprojects/'
+subprojects/*/
+# Optional: Ignore Meson's internal download tracking file (if unwanted)
+subprojects/*.cache
+subprojects/packagecache
