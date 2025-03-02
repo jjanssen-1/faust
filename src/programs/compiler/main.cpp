@@ -1,24 +1,39 @@
+#include <fstream>
 #include <iostream>
-#include <vector>
+#include <stdexcept>
 
-#include "faust-lib/parser/lexer.h"
+#include "faust-lib/parser/faustLexer.h"
 
-enum TestTokens { TK_EOF, TK_FN, TK_DECIMAL_NUMBER, TK_STRING };
+void readUtf8FileToUnicodeString(const std::string &filePath, icu::UnicodeString &unicodeString) {
+  std::ifstream file(filePath, std::ios::binary);
+  if (!file.is_open()) {
+    throw std::runtime_error("File could not be opened");
+  }
 
-int main() {
-  faust::Lexer<TestTokens> lex(TK_EOF);
-  lex.addToken(u"fn", TK_FN);
-  lex.addToken(u"\\d+\\.\\d+", TK_DECIMAL_NUMBER);
-  lex.addToken(u"\"[a-zA-Z]*\"", TK_STRING);
+  std::string utf8Content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  file.close();
 
-  lex.setText(u"fn 1.0 \"hello\"");
+  unicodeString = icu::UnicodeString::fromUTF8(utf8Content);
+}
 
-  std::vector<faust::Lexer<TestTokens>::Lexeme> lexemes;
+int main(int argc, char **argv) {
+  try {
+    icu::UnicodeString fileContent;
+    faust::FaustLexer lex;
 
-  while (lex.hasNext()) {
-    faust::Lexer<TestTokens>::Lexeme next = lex.next();
-    lexemes.push_back(next);
-    std::cout << next << std::endl;
+    if (argc != 2) {
+      throw std::runtime_error("Faustc requires one argument (file path)");
+    }
+
+    std::cout << "Trying to read " << argv[1] << std::endl;
+    readUtf8FileToUnicodeString(argv[1], fileContent);
+
+    auto lexemes = lex.lex(fileContent);
+    for (auto lexeme : lexemes) {
+      std::cout << "FoundToken: " << lexeme << std::endl;
+    }
+  } catch (const std::runtime_error &e) {
+    std::cerr << "\n\nCaught exception: " << e.what() << std::endl;
   }
 
   return 0;

@@ -1,5 +1,5 @@
-faust_parser_header = files('parser.h', 'lexer.h')
-faust_parser_src = files('parser.cpp', 'lexer.cpp')
+faust_parser_header = files('parser.h', 'lexer.h', 'faustLexer.h')
+faust_parser_src = files('parser.cpp', 'lexer.cpp', 'faustLexer.cpp')
 
 faust_parser_lib = static_library('faust-parser', 
                                   sources: [faust_parser_header, faust_parser_src], 

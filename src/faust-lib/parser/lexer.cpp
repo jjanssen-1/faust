@@ -1,6 +1,6 @@
 #include <lexer.h>
 
-faust::u64 countNewlines(const icu::UnicodeString &unicodeString) {
+faust::u64 faust::countNewlines(const icu::UnicodeString &unicodeString) {
   constexpr faust::u16 LF = 0x000A, CR = 0x000D;
   bool lastCr = false;
   faust::u64 count = 0;
@@ -15,5 +15,6 @@ faust::u64 countNewlines(const icu::UnicodeString &unicodeString) {
       lastCr = true;
     }
   }
+
   return count;
 }
