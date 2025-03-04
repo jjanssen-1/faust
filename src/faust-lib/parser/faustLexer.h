@@ -24,6 +24,7 @@ enum FaustTokens {
   TK_COLON,
   TK_SEMICOLON,
   TK_COMMENT,
+  TK_MULTILINE_COMMENT,
   TK_FN,
   TK_CONST,
   TK_MUT,

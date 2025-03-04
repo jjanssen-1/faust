@@ -1,5 +1,6 @@
 #pragma once
 
+#include <iostream>
 #include <memory>
 #include <ostream>
 #include <stdexcept>
@@ -11,6 +12,8 @@
 #include "unicode/utypes.h"
 
 namespace faust {
+
+constexpr u64 regexEndValue = 0xFFFF'FFFF'FFFF'FFFF;
 
 u64 countNewlines(const icu::UnicodeString &unicodeString);
 inline void checkIcuError(const UErrorCode &errorCode, std::string errorInfo) {
@@ -46,65 +49,61 @@ public:
   }
 
   void setText(const icu::UnicodeString &newText) {
-    UErrorCode status = U_ZERO_ERROR;
     state = newText;
-    icu::UnicodeString disjunctFullExpression = u"(";
-
-    for (size_t i = 0; i < tokens.size(); i++) {
-      disjunctFullExpression.append(tokens[i].expression);
-      if (i < (tokens.size() - 1)) {
-        disjunctFullExpression.append(u")|(");
-      }
-    }
-
-    disjunctFullExpression.append(u")");
-    fullPattern = std::unique_ptr<icu::RegexPattern>(icu::RegexPattern::compile(disjunctFullExpression, 0, status));
-    checkIcuError(status, "Pattern compilation");
     finished = false;
     position = 0;
-    lineNumber = 0;
+    lineNumber = 1;
+    for (u64 i = 0; i < tokens.size(); i++) {
+      tokens[i].currentStateIndex = 0;
+    }
   }
 
   Lexeme next() {
+    UErrorCode status = U_ZERO_ERROR;
     if (position >= state.length()) {
       finished = true;
       return {eofToken, u"", lineNumber};
     }
 
-    u64 currentBeginLine = 0;
+    u64 currentBegin = 0;
+    u64 currentMinimum = 0xFFFF'FFFF'FFFF'FFFF, currentEnd = 0;
+    Lexeme currentOutput = {eofToken, u"", 0};
 
-    UErrorCode status = U_ZERO_ERROR;
     icu::UnicodeString currentString = state.tempSubString(position);
-    fullMatcher = std::unique_ptr<icu::RegexMatcher>(fullPattern->matcher(currentString, status));
-    checkIcuError(status, "Matcher creation");
 
-    if (fullMatcher->find()) {
-      u64 start = fullMatcher->start64(status);
-      checkIcuError(status, "Start retrieval");
-      u64 end = fullMatcher->end64(status);
-      checkIcuError(status, "End retrieval");
-
-      icu::UnicodeString match = fullMatcher->group(status);
-      checkIcuError(status, "Match extraction");
-      position += end;
-
-      currentBeginLine = countNewlines(currentString.tempSubString(0, start)) + lineNumber;
-      lineNumber += countNewlines(currentString.tempSubString(0, end));
-
-      for (const TokenDefinition &tokDef : tokens) {
-        // Todo precalculate tokenMatcher per run.
-        std::unique_ptr<icu::RegexMatcher> tokTester(tokDef.pattern->matcher(match, status));
-        checkIcuError(status, "Token matcher creation");
-        if (tokTester->matches(status)) {
-          return {tokDef.token, match, currentBeginLine};
-        }
+    bool foundOne = false;
+    for (u64 i = 0; i < tokens.size(); i++) {
+      std::unique_ptr<icu::RegexMatcher> tokenMatcher =
+          std::unique_ptr<icu::RegexMatcher>(tokens[i].pattern->matcher(currentString, status));
+      checkIcuError(status, "Token matcher creation");
+      if (!tokenMatcher->find()) {
+        tokens[i].currentStateIndex = regexEndValue;
+        continue;
       }
-      // If TokenDefinitions didn't match something could be wrong with the icu library.
-      throw std::logic_error("Found token has to match subgroup token.");
+      foundOne = true;
+      u64 start = tokenMatcher->start64(status);
+      checkIcuError(status, "Match start retrieval");
+      u64 end = tokenMatcher->end64(status);
+      checkIcuError(status, "Match end retrieval");
+      tokens[i].currentStateIndex = position + start;
+      if (tokens[i].currentStateIndex < currentMinimum) {
+        currentMinimum = tokens[i].currentStateIndex;
+        currentOutput = {tokens[i].token, tokenMatcher->group(status)};
+        currentEnd = end;
+        currentBegin = start;
+      }
     }
 
-    finished = true;
-    return {eofToken, u"", currentBeginLine};
+    currentOutput.lineNumber = lineNumber + countNewlines(currentString.tempSubString(0, currentBegin));
+    lineNumber += countNewlines(currentString.tempSubString(0, currentEnd));
+
+    position += currentEnd;
+
+    if (!foundOne) {
+      finished = true;
+    }
+
+    return currentOutput;
   }
 
   bool hasNext() noexcept { return !finished; }
@@ -116,11 +115,10 @@ private:
     icu::UnicodeString expression;
     std::unique_ptr<icu::RegexPattern> pattern;
     TokenEnumeration token;
+    u64 currentStateIndex;
   };
   TokenEnumeration eofToken;
   icu::UnicodeString state;
-  std::unique_ptr<icu::RegexPattern> fullPattern;
-  std::unique_ptr<icu::RegexMatcher> fullMatcher;
   int position;
   u64 lineNumber;
   bool finished;
